@@ -1,0 +1,53 @@
+[
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-c",
+      "-I./src/",
+      "-I/usr/include/",
+      "-I./ext/",
+      "-I./src/imgui/",
+      "-I/usr/include/freetype2/",
+      "-o",
+      "build/./src/main.c.o",
+      "src/main.c"
+    ],
+    "directory": "/home/mitch/Programming/cpp/crot",
+    "file": "/home/mitch/Programming/cpp/crot/src/main.c",
+    "output": "/home/mitch/Programming/cpp/crot/build/src/main.c.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-c",
+      "-I./src/",
+      "-I/usr/include/",
+      "-I./ext/",
+      "-I./src/imgui/",
+      "-I/usr/include/freetype2/",
+      "-o",
+      "build/./src/coredata/hashmap/hashmap.c.o",
+      "src/coredata/hashmap/hashmap.c"
+    ],
+    "directory": "/home/mitch/Programming/cpp/crot",
+    "file": "/home/mitch/Programming/cpp/crot/src/coredata/hashmap/hashmap.c",
+    "output": "/home/mitch/Programming/cpp/crot/build/src/coredata/hashmap/hashmap.c.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-c",
+      "-I./src/",
+      "-I/usr/include/",
+      "-I./ext/",
+      "-I./src/imgui/",
+      "-I/usr/include/freetype2/",
+      "-o",
+      "build/./src/lexer/lexer.c.o",
+      "src/lexer/lexer.c"
+    ],
+    "directory": "/home/mitch/Programming/cpp/crot",
+    "file": "/home/mitch/Programming/cpp/crot/src/lexer/lexer.c",
+    "output": "/home/mitch/Programming/cpp/crot/build/src/lexer/lexer.c.o"
+  }
+]
