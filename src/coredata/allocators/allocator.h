@@ -17,8 +17,10 @@
 #ifndef ALLOCATOR_H_RKHJO9RQ
 #define ALLOCATOR_H_RKHJO9RQ
 
+#include <stdio.h>
 #include <stdint.h>
-#include "stddef.h"
+#include <stdarg.h>
+#include <stddef.h>
 
 typedef struct LinearAllocator {
     void* _begin;
@@ -26,13 +28,39 @@ typedef struct LinearAllocator {
     void* _memcap;
 } LinearAllocator;
 
+typedef struct LinearSlice {
+    LinearAllocator* allocator;
+    size_t position;
+    size_t size;
+} LinearSlice;
+
 LinearAllocator* linear_allocator_new();
 void linear_allocator_free(LinearAllocator* allocator);
 void linear_allocator_realloc(LinearAllocator* allocator, size_t size);
-void* linear_allocator_malloc(LinearAllocator* allocator, size_t size);
+LinearSlice linear_allocator_malloc(LinearAllocator* allocator, size_t size);
 void linear_allocator_clear(LinearAllocator* allocator);
 
-size_t linear_allocator_size(LinearAllocator* allocator);
-size_t linear_allocator_cap(LinearAllocator* allocator);
+inline static size_t linear_allocator_size(LinearAllocator* allocator) {
+    return allocator->_end - allocator->_begin;
+}
+inline static size_t linear_allocator_cap(LinearAllocator* allocator) {
+    return allocator->_memcap - allocator->_begin;
+}
+
+#ifdef DEBUG
+inline static void linear_allocator_print(LinearAllocator* alloc, char* type, char* fmt, ...) {
+    printf("[\e[35m%s\e[0m][%ld/%ld] ", type,
+            linear_allocator_size(alloc),
+            linear_allocator_cap(alloc));
+    va_list ap;
+    va_start(ap, fmt);
+    vprintf(fmt, ap);
+    va_end(ap);
+}
+#else
+inline static void linear_allocator_print(LinearAllocator*, char*, char*, ...) { }
+#endif
+
+void* linear_allocator_at_slice(LinearSlice slice);
 
 #endif /* end of include guard: ALLOCATOR_H_RKHJO9RQ */

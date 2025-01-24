@@ -6,20 +6,16 @@
 
 #include "coredata/allocators/allocator.h"
 
-typedef struct Slice {
-    void* value;
-    size_t size;
-} Slice;
 
-char* read_file(LinearAllocator* alloc, char path[64], size_t* size)
+LinearSlice read_file(LinearAllocator* alloc, char path[64], size_t* size)
 { // {{{
-    if (!size) { return NULL; }
+    if (!size) { return (LinearSlice){NULL, 0, 0}; }
 
     // Open the file
     FILE* file = fopen(path, "r");
     if (errno) {
         printf("Failed to open file '%s'. Error %s\n", path, strerror(errno));
-        return NULL;
+        return (LinearSlice){NULL, 0, 0};
     }
 
     // Get file size
@@ -30,7 +26,8 @@ char* read_file(LinearAllocator* alloc, char path[64], size_t* size)
     *size = file_size;
 
     // Load file into the RAM
-    char* file_ptr = linear_allocator_malloc(alloc, file_size + 1);
+    LinearSlice slice = linear_allocator_malloc(alloc, file_size + 1);
+    char* file_ptr = linear_allocator_at_slice(slice);
     file_ptr[file_size] = 0;
     size_t total_read = 0;
     size_t bytes_read = 0;
@@ -42,7 +39,7 @@ char* read_file(LinearAllocator* alloc, char path[64], size_t* size)
         if (ferror(file)) {
             printf("Failed to read file '%s'.\n", path);
             fclose(file);
-            return NULL;
+            return (LinearSlice){NULL, 0, 0};
         }
     }
 
@@ -50,11 +47,11 @@ char* read_file(LinearAllocator* alloc, char path[64], size_t* size)
     assert(total_read == file_size);
     fclose(file);
 
-    return file_ptr;
+    return slice;
 } // }}}
 
 
-struct Token {
+typedef struct Token {
     enum TokenType
     { // {{{
       // Single-character tokens.
@@ -77,30 +74,33 @@ struct Token {
 
       TOKEN_ERROR, TOKEN_EOF
     } token; // }}}
-    Slice token_string;
-};
+    LinearSlice token_string;
+} Token;
 
 // Parser helper function
 // {{{
-char* parser_peek(Slice src, size_t current_index)
+char parser_peek(LinearSlice src, size_t current_index)
 {
-    if (current_index + 1 > src.size) { return NULL; }
-    return src.value + (current_index + 1);
+    if (current_index + 1 > src.size) { return '\0'; }
+    return *(char*)linear_allocator_at_slice(
+            (LinearSlice){src.allocator, ++current_index, 1});
 }
-char* parser_advance(Slice src, size_t *current_index)
+char parser_advance(LinearSlice src, size_t *current_index)
 {
-    if ((*current_index) + 1 > src.size) { return NULL; }
-    return src.value + (++(*current_index));
+    if ((*current_index) + 1 > src.size) { return '\0'; }
+    return *(char*)linear_allocator_at_slice(
+            (LinearSlice){src.allocator, ++(*current_index), 1});
 }
-void parser_add_token(LinearAllocator* alloc, enum TokenType type, Slice* tokens)
+void parser_add_token(LinearAllocator* alloc, enum TokenType type, size_t* tokens)
 {
-    struct Token* tok = linear_allocator_malloc(alloc, sizeof(struct Token));
-    tok->token = TOKEN_EOF;
-    tokens->size++;
+    LinearSlice tok = linear_allocator_malloc(alloc, sizeof(Token));
+    if (tok.size == 0) printf("ERR\n");
+    ((Token*)linear_allocator_at_slice(tok))->token = type;
+    (*tokens)++;
 }
 // }}}
 
-Slice parse_str(LinearAllocator* alloc, Slice source)
+LinearSlice parse_str(LinearAllocator* alloc, LinearSlice source)
 {
     size_t begin = 0;
     size_t end = 0;
@@ -108,31 +108,37 @@ Slice parse_str(LinearAllocator* alloc, Slice source)
     if (alloc->_begin == NULL) {
         linear_allocator_realloc(alloc, 64);
     }
-    Slice tokens = { alloc->_end, 0 };
+    size_t tokens_begin = alloc->_end - alloc->_begin;
+    size_t tokens_count = 0;
 
-    char* c = source.value;
-    while(c) {
+
+    char c = ' ';
+    for(int i = 0; i < 500; i++) {
         if (begin >= source.size) {
-            parser_add_token(alloc, TOKEN_EOF, &tokens);
+            parser_add_token(alloc, TOKEN_EOF, &tokens_count);
             break;
         }
-        switch (*c) {
-            case '(': parser_add_token(alloc, TOKEN_LEFT_PAREN, &tokens);
-            case ')': parser_add_token(alloc, TOKEN_RIGHT_PAREN, &tokens);
-            case '{': parser_add_token(alloc, TOKEN_LEFT_BRACE, &tokens);
-            case '}': parser_add_token(alloc, TOKEN_RIGHT_BRACE, &tokens);
-            case ';': parser_add_token(alloc, TOKEN_SEMICOLON, &tokens);
-            case ',': parser_add_token(alloc, TOKEN_COMMA, &tokens);
-            case '.': parser_add_token(alloc, TOKEN_DOT, &tokens);
-            case '-': parser_add_token(alloc, TOKEN_MINUS, &tokens);
-            case '+': parser_add_token(alloc, TOKEN_PLUS, &tokens);
-            case '/': parser_add_token(alloc, TOKEN_SLASH, &tokens);
-            case '*': parser_add_token(alloc, TOKEN_STAR, &tokens);
+        switch (c) {
+            case '(': parser_add_token(alloc, TOKEN_LEFT_PAREN, &tokens_count); break;
+            case ')': parser_add_token(alloc, TOKEN_RIGHT_PAREN, &tokens_count); break;
+            case '{': parser_add_token(alloc, TOKEN_LEFT_BRACE, &tokens_count); break;
+            case '}': parser_add_token(alloc, TOKEN_RIGHT_BRACE, &tokens_count); break;
+            case ';': parser_add_token(alloc, TOKEN_SEMICOLON, &tokens_count); break;
+            case ',': parser_add_token(alloc, TOKEN_COMMA, &tokens_count); break;
+            case '.': parser_add_token(alloc, TOKEN_DOT, &tokens_count); break;
+            case '-': parser_add_token(alloc, TOKEN_MINUS, &tokens_count); break;
+            case '+': parser_add_token(alloc, TOKEN_PLUS, &tokens_count); break;
+            case '/': parser_add_token(alloc, TOKEN_SLASH, &tokens_count); break;
+            case '*': parser_add_token(alloc, TOKEN_STAR, &tokens_count); break;
         }
         c = parser_advance(source, &begin);
     }
 
-    return tokens;
+    for (int i = 0; i < tokens_count; i++) {
+        Token* tok = linear_allocator_at_slice((LinearSlice){alloc, tokens_begin + (i * sizeof(Token)), sizeof(Token)});
+        printf("T: %d\n", tok->token);
+    }
+    return (LinearSlice){ alloc, 0, 0};
 }
 
 int main(int argc, char** argv)
@@ -143,14 +149,9 @@ int main(int argc, char** argv)
     LinearAllocator* main_alloc = linear_allocator_new();
 
     size_t file_size;
-    char* file_ptr = read_file(main_alloc, argv[1], &file_size);
-    //char* file_ptr = "hello world\n";
-    if (file_ptr) {
-        Slice tokens = parse_str(main_alloc, (Slice){file_ptr, file_size});
-
-        for (int i = 0; i < tokens.size; i++) {
-            printf("%d\n", ((struct Token*)tokens.value)[i].token);
-        }
+    LinearSlice file_slice = read_file(main_alloc, argv[1], &file_size);
+    if (file_slice.size) {
+        parse_str(main_alloc, file_slice);
     }
 
     printf("Used: %ld Allocated: %ld\n",

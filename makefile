@@ -6,6 +6,8 @@ CC        := /usr/bin/gcc
 INCS      := -I./src/ -L/usr/lib/ -I/usr/includes/
 LIBS      :=
 
+CFLAGS    += -fsanitize=address -g
+
 ########################################## Global
 MKF_DIR	:= $(abspath $(lastword $(MAKEFILE_LIST)))
 CUR_DIR	:= $(MKF_DIR:makefile=)
@@ -27,12 +29,12 @@ $(BUILD)/$(TARGET)-rel: $(OBJS)
 	strip $(BUILD)/$(TARGET)
 $(BUILD)/%.cpp.o: %.cpp
 	mkdir -p $(dir $@)
-	$(CC) -c -fPIC $< -o $@ $(INCS) $(LIBS) $(CFLAGS)
+	$(CC) -fPIC $< -o $@ $(INCS) $(LIBS) $(CFLAGS)
 	@if [ -t 1 ]; then printf "[$$(date +%H:%M:%S)][\033[35mBUILD\033[0m] $$(basename ${CC}) $<\n"; \
 	else printf "[$$(date +%H-%M-%S)][BUILD] $$(basename ${CC}) $<\n"; fi
 $(BUILD)/%.c.o: %.c
 	mkdir -p $(dir $@)
-	$(CC) -g -c $< -o $@ $(INCS) $(LIBS) $(CFLAGS)
+	$(CC) -c $< -o $@ $(INCS) $(LIBS) $(CFLAGS)
 	@if [ -t 1 ]; then printf "[$$(date +%H:%M:%S)][\033[35mBUILD\033[0m] $$(basename ${CC}) $<\n"; \
 	else printf "[$$(date +%H-%M-%S)][BUILD] $$(basename ${CC}) $<\n"; fi
 
