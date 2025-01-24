@@ -6,7 +6,7 @@ CC        := /usr/bin/gcc
 INCS      := -I./src/ -L/usr/lib/ -I/usr/includes/
 LIBS      :=
 
-CFLAGS    += -fsanitize=address -g
+CFLAGS    += -fsanitize=address -g -DDEBUG
 
 ########################################## Global
 MKF_DIR	:= $(abspath $(lastword $(MAKEFILE_LIST)))

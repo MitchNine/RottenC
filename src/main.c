@@ -31,7 +31,7 @@ LinearSlice read_file(LinearAllocator* alloc, char path[64], size_t* size)
     file_ptr[file_size] = 0;
     size_t total_read = 0;
     size_t bytes_read = 0;
-    while(bytes_read = fread(file_ptr + bytes_read, sizeof(char), file_size, file)) {
+    while((bytes_read = fread(file_ptr + bytes_read, sizeof(char), file_size, file))) {
         printf("Reading %ld bytes into %p + %ld\n", bytes_read, file_ptr, total_read);
         total_read += bytes_read;
 
@@ -50,6 +50,31 @@ LinearSlice read_file(LinearAllocator* alloc, char path[64], size_t* size)
     return slice;
 } // }}}
 
+char* TokenTypeString[] =
+{
+    "TOKEN_LEFT_PAREN", "TOKEN_RIGHT_PAREN",
+    "TOKEN_LEFT_BRACE", "TOKEN_RIGHT_BRACE",
+    "TOKEN_LEFT_SQUARE", "TOKEN_RIGHT_SQUARE",
+    "TOKEN_COMMA", "TOKEN_DOT", "TOKEN_MINUS",
+    "TOKEN_PLUS", "TOKEN_SEMICOLON", "TOKEN_SLASH",
+
+    "TOKEN_STAR", "TOKEN_BANG",
+    "TOKEN_BANG_EQUAL", "TOKEN_EQUAL",
+    "TOKEN_EQUAL_EQUAL", "TOKEN_GREATER",
+    "TOKEN_GREATER_EQUAL", "TOKEN_LESS",
+    "TOKEN_LESS_EQUAL",
+
+    "TOKEN_IDENTIFIER", "TOKEN_STRING", "TOKEN_NUMBER",
+
+    "TOKEN_AND", "TOKEN_CLASS", "TOKEN_ELSE",
+    "TOKEN_FALSE", "TOKEN_FOR", "TOKEN_FUN",
+    "TOKEN_IF", "TOKEN_NIL", "TOKEN_OR",
+    "TOKEN_PRINT", "TOKEN_RETURN", "TOKEN_SUPER",
+    "TOKEN_THIS", "TOKEN_TRUE", "TOKEN_VAR",
+    "TOKEN_WHILE", "TOKEN_ERROR",
+
+    "TOKEN_EOF",
+};
 
 typedef struct Token {
     enum TokenType
@@ -57,6 +82,7 @@ typedef struct Token {
       // Single-character tokens.
       TOKEN_LEFT_PAREN, TOKEN_RIGHT_PAREN,
       TOKEN_LEFT_BRACE, TOKEN_RIGHT_BRACE,
+      TOKEN_LEFT_SQUARE, TOKEN_RIGHT_SQUARE,
       TOKEN_COMMA, TOKEN_DOT, TOKEN_MINUS, TOKEN_PLUS,
       TOKEN_SEMICOLON, TOKEN_SLASH, TOKEN_STAR,
       // One or two character tokens.
@@ -83,13 +109,13 @@ char parser_peek(LinearSlice src, size_t current_index)
 {
     if (current_index + 1 > src.size) { return '\0'; }
     return *(char*)linear_allocator_at_slice(
-            (LinearSlice){src.allocator, ++current_index, 1});
+            (LinearSlice){src.allocator, current_index, 1});
 }
 char parser_advance(LinearSlice src, size_t *current_index)
 {
     if ((*current_index) + 1 > src.size) { return '\0'; }
     return *(char*)linear_allocator_at_slice(
-            (LinearSlice){src.allocator, ++(*current_index), 1});
+            (LinearSlice){src.allocator, (*current_index)++, 1});
 }
 void parser_add_token(LinearAllocator* alloc, enum TokenType type, size_t* tokens)
 {
@@ -113,30 +139,64 @@ LinearSlice parse_str(LinearAllocator* alloc, LinearSlice source)
 
 
     char c = ' ';
-    for(int i = 0; i < 500; i++) {
+    for(int i = 0; i < 1024; i++) {
         if (begin >= source.size) {
             parser_add_token(alloc, TOKEN_EOF, &tokens_count);
             break;
         }
         switch (c) {
+            case ' ':
+            case '\r':
+            case '\n':
+            case '\t':
+                c = parser_advance(source, &begin);
+                continue;
             case '(': parser_add_token(alloc, TOKEN_LEFT_PAREN, &tokens_count); break;
             case ')': parser_add_token(alloc, TOKEN_RIGHT_PAREN, &tokens_count); break;
             case '{': parser_add_token(alloc, TOKEN_LEFT_BRACE, &tokens_count); break;
             case '}': parser_add_token(alloc, TOKEN_RIGHT_BRACE, &tokens_count); break;
+            case '[': parser_add_token(alloc, TOKEN_LEFT_SQUARE, &tokens_count); break;
+            case ']': parser_add_token(alloc, TOKEN_RIGHT_SQUARE, &tokens_count); break;
             case ';': parser_add_token(alloc, TOKEN_SEMICOLON, &tokens_count); break;
             case ',': parser_add_token(alloc, TOKEN_COMMA, &tokens_count); break;
             case '.': parser_add_token(alloc, TOKEN_DOT, &tokens_count); break;
             case '-': parser_add_token(alloc, TOKEN_MINUS, &tokens_count); break;
             case '+': parser_add_token(alloc, TOKEN_PLUS, &tokens_count); break;
-            case '/': parser_add_token(alloc, TOKEN_SLASH, &tokens_count); break;
             case '*': parser_add_token(alloc, TOKEN_STAR, &tokens_count); break;
+            case '!': parser_add_token(alloc, 
+                      parser_peek(source, begin) == '=' ? TOKEN_BANG_EQUAL : TOKEN_BANG
+                      , &tokens_count); break;
+            case '=': parser_add_token(alloc, 
+                      parser_peek(source, begin) == '=' ? TOKEN_EQUAL_EQUAL : TOKEN_EQUAL
+                      , &tokens_count); break;
+            case '<': parser_add_token(alloc, 
+                      parser_peek(source, begin) == '=' ? TOKEN_LESS_EQUAL : TOKEN_LESS
+                      , &tokens_count); break;
+            case '>': parser_add_token(alloc, 
+                      parser_peek(source, begin) == '=' ? TOKEN_GREATER_EQUAL : TOKEN_GREATER
+                      , &tokens_count); break;
+            case '/': {
+                      if (parser_peek(source, begin) == '/') {
+                          c = parser_advance(source, &begin);
+                          printf("\e[32m//");
+                          while ((c = parser_advance(source, &begin))) {
+                              if (c == '\n') break;
+                              printf("%c", c);
+                          }
+                          printf("\e[0m\n");
+                      }
+                  } break;
+
+
         }
         c = parser_advance(source, &begin);
     }
 
     for (int i = 0; i < tokens_count; i++) {
-        Token* tok = linear_allocator_at_slice((LinearSlice){alloc, tokens_begin + (i * sizeof(Token)), sizeof(Token)});
-        printf("T: %d\n", tok->token);
+        Token* tok = linear_allocator_at_slice(
+            (LinearSlice){alloc, tokens_begin + (i * sizeof(Token)), sizeof(Token)}
+        );
+        printf("T: %s\n", TokenTypeString[tok->token]);
     }
     return (LinearSlice){ alloc, 0, 0};
 }

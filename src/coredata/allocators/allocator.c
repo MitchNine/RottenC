@@ -8,6 +8,7 @@ LinearAllocator* linear_allocator_new()
 {
     LinearAllocator* allocator = malloc(sizeof(LinearAllocator));
     memset(allocator, 0, sizeof(LinearAllocator));
+    return allocator;
 }
 void linear_allocator_free(LinearAllocator* allocator)
 {
@@ -43,7 +44,7 @@ LinearSlice linear_allocator_malloc(LinearAllocator* allocator, size_t size)
 {
     if (allocator == NULL) { return (LinearSlice){NULL, 0, 0}; }
     if (allocator->_begin == NULL) {
-        linear_allocator_realloc(allocator, 64);
+        linear_allocator_realloc(allocator, 512);
     }
     uint32_t tries = 0;
     while (allocator->_memcap - allocator->_end <= size) {
@@ -60,7 +61,7 @@ LinearSlice linear_allocator_malloc(LinearAllocator* allocator, size_t size)
     
     void* ptr = allocator->_end;
     allocator->_end += size;
-    linear_allocator_print(allocator, "MALLOC", "+%ld bytes\n", size);
+    linear_allocator_print(allocator, "MALLOC", "+\e[34m%ld\e[0m bytes\n", size);
     return slice;
 }
 void linear_allocator_clear(LinearAllocator* allocator)
