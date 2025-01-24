@@ -6,6 +6,37 @@
 
 #include "coredata/allocators/allocator.h"
 
+#define TOKEN_LIST \
+    X(TOKEN_LEFT_PAREN) X(TOKEN_RIGHT_PAREN) \
+    X(TOKEN_LEFT_BRACE) X(TOKEN_RIGHT_BRACE) \
+    X(TOKEN_LEFT_SQUARE) X(TOKEN_RIGHT_SQUARE) \
+    \
+    X(TOKEN_COMMA) X(TOKEN_DOT) \
+    X(TOKEN_MINUS) X(TOKEN_PLUS) \
+    X(TOKEN_SEMICOLON) X(TOKEN_SLASH) \
+    X(TOKEN_STAR) X(TOKEN_BANG) \
+    X(TOKEN_BANG_EQUAL) X(TOKEN_EQUAL) \
+    X(TOKEN_EQUAL_EQUAL) X(TOKEN_GREATER) \
+    X(TOKEN_GREATER_EQUAL) X(TOKEN_LESS) \
+    X(TOKEN_LESS_EQUAL) \
+    \
+    X(TOKEN_IDENTIFIER) X(TOKEN_STRING) X(TOKEN_NUMBER) \
+    X(TOKEN_AND) X(TOKEN_CLASS) X(TOKEN_ELSE) \
+    X(TOKEN_FALSE) X(TOKEN_FOR) X(TOKEN_FUN) \
+    X(TOKEN_IF) X(TOKEN_NIL) X(TOKEN_OR) \
+    X(TOKEN_PRINT) X(TOKEN_RETURN) X(TOKEN_SUPER) \
+    X(TOKEN_THIS) X(TOKEN_TRUE) X(TOKEN_VAR) \
+    X(TOKEN_WHILE) \
+    \
+    X(TOKEN_ERROR) X(TOKEN_EOF) \
+
+#define X(name) #name,
+char* TokenTypeString[] =
+{ TOKEN_LIST };
+#undef X
+#define X(name) name,
+enum TokenType { TOKEN_LIST };
+#undef X
 
 LinearSlice read_file(LinearAllocator* alloc, char path[64], size_t* size)
 { // {{{
@@ -50,56 +81,8 @@ LinearSlice read_file(LinearAllocator* alloc, char path[64], size_t* size)
     return slice;
 } // }}}
 
-char* TokenTypeString[] =
-{
-    "TOKEN_LEFT_PAREN", "TOKEN_RIGHT_PAREN",
-    "TOKEN_LEFT_BRACE", "TOKEN_RIGHT_BRACE",
-    "TOKEN_LEFT_SQUARE", "TOKEN_RIGHT_SQUARE",
-    "TOKEN_COMMA", "TOKEN_DOT", "TOKEN_MINUS",
-    "TOKEN_PLUS", "TOKEN_SEMICOLON", "TOKEN_SLASH",
-
-    "TOKEN_STAR", "TOKEN_BANG",
-    "TOKEN_BANG_EQUAL", "TOKEN_EQUAL",
-    "TOKEN_EQUAL_EQUAL", "TOKEN_GREATER",
-    "TOKEN_GREATER_EQUAL", "TOKEN_LESS",
-    "TOKEN_LESS_EQUAL",
-
-    "TOKEN_IDENTIFIER", "TOKEN_STRING", "TOKEN_NUMBER",
-
-    "TOKEN_AND", "TOKEN_CLASS", "TOKEN_ELSE",
-    "TOKEN_FALSE", "TOKEN_FOR", "TOKEN_FUN",
-    "TOKEN_IF", "TOKEN_NIL", "TOKEN_OR",
-    "TOKEN_PRINT", "TOKEN_RETURN", "TOKEN_SUPER",
-    "TOKEN_THIS", "TOKEN_TRUE", "TOKEN_VAR",
-    "TOKEN_WHILE", "TOKEN_ERROR",
-
-    "TOKEN_EOF",
-};
-
 typedef struct Token {
-    enum TokenType
-    { // {{{
-      // Single-character tokens.
-      TOKEN_LEFT_PAREN, TOKEN_RIGHT_PAREN,
-      TOKEN_LEFT_BRACE, TOKEN_RIGHT_BRACE,
-      TOKEN_LEFT_SQUARE, TOKEN_RIGHT_SQUARE,
-      TOKEN_COMMA, TOKEN_DOT, TOKEN_MINUS, TOKEN_PLUS,
-      TOKEN_SEMICOLON, TOKEN_SLASH, TOKEN_STAR,
-      // One or two character tokens.
-      TOKEN_BANG, TOKEN_BANG_EQUAL,
-      TOKEN_EQUAL, TOKEN_EQUAL_EQUAL,
-      TOKEN_GREATER, TOKEN_GREATER_EQUAL,
-      TOKEN_LESS, TOKEN_LESS_EQUAL,
-      // Literals.
-      TOKEN_IDENTIFIER, TOKEN_STRING, TOKEN_NUMBER,
-      // Keywords.
-      TOKEN_AND, TOKEN_CLASS, TOKEN_ELSE, TOKEN_FALSE,
-      TOKEN_FOR, TOKEN_FUN, TOKEN_IF, TOKEN_NIL, TOKEN_OR,
-      TOKEN_PRINT, TOKEN_RETURN, TOKEN_SUPER, TOKEN_THIS,
-      TOKEN_TRUE, TOKEN_VAR, TOKEN_WHILE,
-
-      TOKEN_ERROR, TOKEN_EOF
-    } token; // }}}
+    enum TokenType token; // }}}
     LinearSlice token_string;
 } Token;
 
