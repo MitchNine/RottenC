@@ -1,5 +1,0 @@
-// This is a comment
-int main(int argc, char** argv) {
-    return 0; // Return 0
-}
-

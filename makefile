@@ -6,7 +6,10 @@ CC        := /usr/bin/gcc
 INCS      := -I./src/ -L/usr/lib/ -I/usr/includes/
 LIBS      :=
 
-CFLAGS    += -fsanitize=address -g -DDEBUG
+LDFLAGS=$(INCS) $(LIBS)
+
+CCFLAGS    += -Wall
+CXXFLAGS   += -Wall
 
 ########################################## Global
 MKF_DIR	:= $(abspath $(lastword $(MAKEFILE_LIST)))
@@ -16,25 +19,30 @@ OBJS += $(patsubst %.cpp,$(BUILD)/%.cpp.o, $(shell find ./src -name "*.cpp"))
 CPU_COUNT=$(shell grep -c "^processor" /proc/cpuinfo)
 
 ########################################## Rules
-all-dbg: $(BUILD)/$(TARGET)-dbg
-all-rel: $(BUILD)/$(TARGET)-rel
-rel:
-	$(MAKE) -j$(CPU_COUNT) all-rel
-dbg:
-	$(MAKE) -j$(CPU_COUNT) all-dbg
-$(BUILD)/$(TARGET)-dbg: $(OBJS)
-	$(CC) -g $(CFLAGS) $(OBJS) -o $(BUILD)/$(TARGET) $(INCS) $(LIBS) $(LDFLAGS)
-$(BUILD)/$(TARGET)-rel: $(OBJS)
-	$(CC) -O3 $(CFLAGS) $(OBJS) -o $(BUILD)/$(TARGET) $(INCS) $(LIBS) $(LDFLAGS)
+
+all: $(BUILD)/$(TARGET)
+
+dbg: CCFLAGS    += -g -pg -DDEBUG -fsanitize=address
+dbg: CXXFLAGS   += -g -pg -DDEBUG -fsanitize=address
+dbg: $(BUILD)/$(TARGET)
+rel: CCFLAGS    += -O3
+rel: CXXFLAGS   += -O3
+rel: $(BUILD)/$(TARGET)
+	@if [ -t 1 ]; then printf "[$$(date +%H:%M:%S)][\033[34mMAKE\033[0m] Stripping './$(BUILD)/$(TARGET)'\n"; \
+	else printf "[$$(date +%H-%M-%S)][MAKE] Running './$(BUILD)/$(TARGET)'\n"; fi
 	strip $(BUILD)/$(TARGET)
+
+$(BUILD)/$(TARGET): $(OBJS)
+	$(CXX) $(CCFLAGS) $(OBJS) -o $(BUILD)/$(TARGET) $(LDFLAGS)
+
 $(BUILD)/%.cpp.o: %.cpp
 	mkdir -p $(dir $@)
-	$(CC) -fPIC $< -o $@ $(INCS) $(LIBS) $(CFLAGS)
+	$(CC) -fPIC $< -o $@ $(LDFLAGS) $(CCFLAGS)
 	@if [ -t 1 ]; then printf "[$$(date +%H:%M:%S)][\033[35mBUILD\033[0m] $$(basename ${CC}) $<\n"; \
 	else printf "[$$(date +%H-%M-%S)][BUILD] $$(basename ${CC}) $<\n"; fi
 $(BUILD)/%.c.o: %.c
 	mkdir -p $(dir $@)
-	$(CC) -c $< -o $@ $(INCS) $(LIBS) $(CFLAGS)
+	$(CC) -c $< -o $@ $(LDFLAGS) $(CCFLAGS)
 	@if [ -t 1 ]; then printf "[$$(date +%H:%M:%S)][\033[35mBUILD\033[0m] $$(basename ${CC}) $<\n"; \
 	else printf "[$$(date +%H-%M-%S)][BUILD] $$(basename ${CC}) $<\n"; fi
 
@@ -43,7 +51,12 @@ $(BUILD)/%.c.o: %.c
 run:
 	@if [ -t 1 ]; then printf "[$$(date +%H:%M:%S)][\033[34mMAKE\033[0m] Running './$(BUILD)/$(TARGET)'\n"; \
 	else printf "[$$(date +%H-%M-%S)][MAKE] Running './$(BUILD)/$(TARGET)'\n"; fi
-	$(BUILD)/$(TARGET)
+	$(BUILD)/$(TARGET) $(ARGS)
+.PHONY: strip
+strip:
+	@if [ -t 1 ]; then printf "[$$(date +%H:%M:%S)][\033[34mMAKE\033[0m] Stripping './$(BUILD)/$(TARGET)'\n"; \
+	else printf "[$$(date +%H-%M-%S)][MAKE] Running './$(BUILD)/$(TARGET)'\n"; fi
+	strip $(BUILD)/$(TARGET)
 .PHONY: clean
 clean:
 	mkdir -p $(BUILD)

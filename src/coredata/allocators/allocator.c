@@ -28,7 +28,6 @@ void linear_allocator_realloc(LinearAllocator* allocator, size_t size){
         linear_allocator_print(allocator, "REALLOC", "NEW\n");
         return;
     }
-    size_t old_size = linear_allocator_cap(allocator);
     size_t old_alloc = linear_allocator_size(allocator);
     linear_allocator_print(allocator, "REALLOC", "OLD (Changing to %ld)\n", size);
     void* tmp = malloc(size);
@@ -53,13 +52,8 @@ LinearSlice linear_allocator_malloc(LinearAllocator* allocator, size_t size)
         if (tries++ > 50) return (LinearSlice){NULL, 0, 0};
     }
 
-    LinearSlice slice = {
-        allocator,
-        linear_allocator_size(allocator),
-        size
-    };
+    LinearSlice slice = { allocator, linear_allocator_size(allocator), size };
     
-    void* ptr = allocator->_end;
     allocator->_end += size;
     linear_allocator_print(allocator, "MALLOC", "+\e[34m%ld\e[0m bytes\n", size);
     return slice;
