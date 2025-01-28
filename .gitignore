@@ -1,3 +1,4 @@
 /build
 /.cache
 /tags
+/gmon.out
