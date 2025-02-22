@@ -39,7 +39,6 @@ char* c_cflags[] =
 char* build_dir = "./build";
 char* build_c = "./src/build.c";
 char* build_exe = "./gcc_build";
-struct stat build_filestat;
 
 /*****************************************************************************
 * Util Functions
@@ -84,9 +83,42 @@ void get_output_path(const char* path, struct FileInfo* out)
 }
 
 /*****************************************************************************
+* Context File
+*****************************************************************************/
+struct BuildContext {
+	long int last_build;
+	long int last_modif;
+	bool lock;
+};
+void get_build(struct BuildContext* ctx, char* lockfile)
+{
+	FILE* build_file_info;
+	if ((build_file_info = fopen(lockfile, "r"))) {
+		long int mod = 0;
+		assert(fread(&ctx->last_build, sizeof(long int), 1, build_file_info) > 0);
+		assert(fread(&ctx->last_modif, sizeof(long int), 1, build_file_info) > 0);
+		assert(fread(&ctx->lock, sizeof(bool), 1, build_file_info) > 0);
+		fclose(build_file_info);
+	} else if ((build_file_info = fopen(lockfile, "w"))) {
+		fclose(build_file_info);
+	}
+}
+void set_build(struct BuildContext* ctx, char* lockfile)
+{
+	FILE* build_file_info;
+	if ((build_file_info = fopen(lockfile, "w"))) {
+		long int mod = 0;
+		assert(fwrite(&ctx->last_build, sizeof(long int), 1, build_file_info) > 0);
+		assert(fwrite(&ctx->last_modif, sizeof(long int), 1, build_file_info) > 0);
+		assert(fwrite(&ctx->lock, sizeof(bool), 1, build_file_info) > 0);
+		fclose(build_file_info);
+	}
+}
+
+/*****************************************************************************
 * Compile Files
 *****************************************************************************/
-bool compile_file(const char* path)
+bool compile_file(const char* path, struct BuildContext* ctx)
 {
 	char cmd[256];
 	char output_dir[256];
@@ -114,7 +146,7 @@ bool compile_file(const char* path)
 					if (strstr(tok, "src")) {
 						struct stat filestat;
 						assert(stat(tok, &filestat) >= 0 && "Failed to stat file");
-						if (filestat.st_mtim.tv_sec >= build_filestat.st_mtim.tv_sec) {
+						if (filestat.st_mtim.tv_sec >= ctx->last_build) {
 							dep_has_changed = true;
 						}
 					}
@@ -132,9 +164,9 @@ bool compile_file(const char* path)
 		// Check if file itself hasn't changed since last build
 		struct stat filestat;
 		assert(stat(path, &filestat) >= 0 && "Failed to stat file");
-		if (filestat.st_mtim.tv_sec < build_filestat.st_mtim.tv_sec
+		if (filestat.st_mtim.tv_sec < ctx->last_build
 				&& !dep_has_changed) {
-			return true;
+			return false;
 		}
 	}
 
@@ -191,55 +223,38 @@ bool compile_exe()
 *****************************************************************************/
 int main(int argc, char *argv[])
 {
-	assert(stat(build_c, &build_filestat) >= 0 && "Failed to stat build.c");
-
-
 	char build_file_lock[256];
 	sprintf(build_file_lock, "%s/build.lock", build_dir);
+	struct BuildContext build_ctx = {0};
+	get_build(&build_ctx, build_file_lock);
 
-	bool rebuild = false;
-	FILE* build_file_info;
-	if ((build_file_info = fopen(build_file_lock, "a+"))) {
-		long int mod = 0;
-		if (fread(&mod, sizeof(long int), 1, build_file_info) > 0) {
-			if (mod < build_filestat.st_mtim.tv_sec) {
-				rebuild = true;
-			}
-		} else {
-			rebuild = true;
-		}
-
-		fclose(build_file_info);
-	} else {
-		printf("Build may already be running\n");
-		return 2;
+	if (build_ctx.lock) {
+		printf("Build in progress\n");
+		return 1;
 	}
 
-
-	if (rebuild) {
-		printf("[\033[34mBUILD\033[0m] %s\n", build_c);
+	struct stat build_filestat;
+	assert(stat(build_c, &build_filestat) >= 0 && "Failed to stat build.c");
+	if (build_ctx.last_modif < build_filestat.st_mtim.tv_sec) {
 		char cmd[256];
 		sprintf(cmd, "gcc %s -o %s", build_c, build_exe);
-		
 		exec(cmd);
+	
+		build_ctx.last_modif = time(NULL);
+		printf("[\033[34mBUILD\033[0m] %s\n", build_c);
+	}
 
-
-		if ((build_file_info = fopen(build_file_lock, "w+"))) {
-			fwrite(&build_filestat.st_mtim.tv_sec, sizeof(long int), 1, build_file_info);
+	bool has_built = false;
+	for (int i = 0; i < (sizeof(c_src) / sizeof(c_src[0])); i++) {
+		if (compile_file(c_src[i], &build_ctx)) {
+			has_built = true;
 		}
 	}
-
-build:
-
-	for (int i = 0; i < (sizeof(c_src) / sizeof(c_src[0])); i++) {
-		compile_file(c_src[i]);
+	if (has_built) {
+		build_ctx.last_build = time(NULL);
 	}
 	compile_exe();
-
-	//struct utimbuf new_times;
-	//new_times.actime = build_filestat.st_atime;
-	//new_times.modtime = time(NULL);
-	//assert(utime(build_c, &new_times) >= 0 && "Updating build.c mod time failed");
+	set_build(&build_ctx, build_file_lock);
 
 	if (argc > 1) {
 		if (strstr(argv[1], "--")) {
@@ -252,6 +267,5 @@ build:
 		}
 	}
 
-eof:
 	return 0;
 }
