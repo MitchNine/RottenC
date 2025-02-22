@@ -10,6 +10,9 @@
 #include <time.h>
 #include <utime.h>
 
+/*****************************************************************************
+* Settings
+*****************************************************************************/
 char* c_exe   = "crot";
 char* c_src[] =
 {
@@ -33,19 +36,19 @@ char* c_cflags[] =
 	"-L/usr/lib/",
 	"-I/usr/includes/",
 };
+char* build_dir = "./build";
 char* build_c = "./src/build.c";
-char* build_exe = "./build";
+char* build_exe = "./gcc_build";
 struct stat build_filestat;
 
-
+/*****************************************************************************
+* Util Functions
+*****************************************************************************/
 bool exec(const char* command)
 {
 	char buff[256];
 	FILE* fp = popen(command, "r");
-	if (!fp) {
-		perror("popen failed");
-		return false;
-	}
+	assert(fp && "popen failed");
 	while (fgets(buff, sizeof(buff), fp) != NULL) {
 		printf("%s", buff);
 	}
@@ -67,7 +70,9 @@ int rec_mkdir(const char *dir) {
 	return mkdir(tmp, S_IRWXU);
 }
 
-
+/*****************************************************************************
+* Get File Info
+*****************************************************************************/
 struct FileInfo {
 	char* dir;
 	char* file;
@@ -78,8 +83,9 @@ void get_output_path(const char* path, struct FileInfo* out)
 	out->file = strtok(basename(strdup(path)), ".");
 }
 
-
-
+/*****************************************************************************
+* Compile Files
+*****************************************************************************/
 bool compile_file(const char* path)
 {
 	char cmd[256];
@@ -91,7 +97,7 @@ bool compile_file(const char* path)
 	bool dep_has_changed = false;
 
 	// Check if file deps have been modified
-	sprintf(output_file, "build/%s/%s.d", fileinfo.dir, fileinfo.file);
+	sprintf(output_file, "%s/%s/%s.d", build_dir, fileinfo.dir, fileinfo.file);
 	FILE* depfile;
 	if ((depfile = fopen(output_file, "r"))) {
 		size_t len = 0;
@@ -123,7 +129,7 @@ bool compile_file(const char* path)
 			free(line);
 		fclose(depfile);
 
-		// File hasn't changed since last build
+		// Check if file itself hasn't changed since last build
 		struct stat filestat;
 		assert(stat(path, &filestat) >= 0 && "Failed to stat file");
 		if (filestat.st_mtim.tv_sec < build_filestat.st_mtim.tv_sec
@@ -134,7 +140,7 @@ bool compile_file(const char* path)
 
 
 	// Check if output directory exists
-	sprintf(output_dir, "build/%s", fileinfo.dir);
+	sprintf(output_dir, "%s/%s", build_dir, fileinfo.dir);
 	struct stat st = {0};
 	if (stat(output_dir, &st) == -1) {
 		if (rec_mkdir(output_dir) == -1) {
@@ -143,8 +149,8 @@ bool compile_file(const char* path)
 	}
 
 	// Create start of gcc command
-	sprintf(cmd, "gcc -c %s -o build/%s/%s.o ",
-				 path, fileinfo.dir, fileinfo.file);
+	sprintf(cmd, "gcc -c %s -o %s/%s/%s.o ",
+				 path, build_dir, fileinfo.dir, fileinfo.file);
 
 	// Add all the flags to the gcc command
 	for (int i = 0; i < (sizeof(c_cflags) / sizeof(c_cflags[0])); i++) {
@@ -159,7 +165,7 @@ bool compile_file(const char* path)
 bool compile_exe()
 {
 	char cmd[256] = {0};
-	sprintf(cmd, "gcc -o build/%s ", c_exe);
+	sprintf(cmd, "gcc -o %s/%s ", build_dir, c_exe);
 
 	// Add all the flags to the gcc command
 	for (int i = 0; i < (sizeof(c_cflags) / sizeof(c_cflags[0])); i++) {
@@ -171,27 +177,81 @@ bool compile_exe()
 		char* path = c_src[i];
 		struct FileInfo fileinfo = {};
 		get_output_path(path, &fileinfo);
-		sprintf(cmd + strlen(cmd), "build/%s/%s.o ", fileinfo.dir, fileinfo.file);
+		sprintf(cmd + strlen(cmd), "%s/%s/%s.o ", build_dir, fileinfo.dir, fileinfo.file);
 	}
 
-	printf("[\033[34mBUILD\033[0m] ./build/%s\n", c_exe);
+	printf("[\033[34mBUILD\033[0m] %s/%s\n", build_dir, c_exe);
 	exec(cmd);
 
 	return true;
 }
 
+/*****************************************************************************
+* Main
+*****************************************************************************/
 int main(int argc, char *argv[])
 {
 	assert(stat(build_c, &build_filestat) >= 0 && "Failed to stat build.c");
+
+
+	char build_file_lock[256];
+	sprintf(build_file_lock, "%s/build.lock", build_dir);
+
+	bool rebuild = false;
+	FILE* build_file_info;
+	if ((build_file_info = fopen(build_file_lock, "a+"))) {
+		long int mod = 0;
+		if (fread(&mod, sizeof(long int), 1, build_file_info) > 0) {
+			if (mod < build_filestat.st_mtim.tv_sec) {
+				rebuild = true;
+			}
+		} else {
+			rebuild = true;
+		}
+
+		fclose(build_file_info);
+	} else {
+		printf("Build may already be running\n");
+		return 2;
+	}
+
+
+	if (rebuild) {
+		printf("[\033[34mBUILD\033[0m] %s\n", build_c);
+		char cmd[256];
+		sprintf(cmd, "gcc %s -o %s", build_c, build_exe);
+		
+		exec(cmd);
+
+
+		if ((build_file_info = fopen(build_file_lock, "w+"))) {
+			fwrite(&build_filestat.st_mtim.tv_sec, sizeof(long int), 1, build_file_info);
+		}
+	}
+
+build:
 
 	for (int i = 0; i < (sizeof(c_src) / sizeof(c_src[0])); i++) {
 		compile_file(c_src[i]);
 	}
 	compile_exe();
 
-	struct utimbuf new_times;
-	new_times.actime = build_filestat.st_atime;
-	new_times.modtime = time(NULL);
-	assert(utime(build_c, &new_times) >= 0 && "Updating build.c mod time failed");
+	//struct utimbuf new_times;
+	//new_times.actime = build_filestat.st_atime;
+	//new_times.modtime = time(NULL);
+	//assert(utime(build_c, &new_times) >= 0 && "Updating build.c mod time failed");
+
+	if (argc > 1) {
+		if (strstr(argv[1], "--")) {
+			char cmd[256];
+			sprintf(cmd, "%s/%s", build_dir, c_exe);
+			for (int i = 2; i < argc; i++) {
+				sprintf(cmd, "%s %s", cmd, argv[i]);
+			}
+			exec(cmd);
+		}
+	}
+
+eof:
 	return 0;
 }
