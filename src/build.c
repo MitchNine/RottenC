@@ -43,7 +43,7 @@ char* build_exe = "./gcc_build";
 /*****************************************************************************
 * Util Functions
 *****************************************************************************/
-bool exec(const char* command)
+int exec(const char* command)
 {
 	char buff[256];
 	FILE* fp = popen(command, "r");
@@ -51,8 +51,7 @@ bool exec(const char* command)
 	while (fgets(buff, sizeof(buff), fp) != NULL) {
 		printf("%s", buff);
 	}
-	pclose(fp);
-	return true;
+	return pclose(fp);
 }
 int rec_mkdir(const char *dir) {
 	char tmp[256];
@@ -67,19 +66,6 @@ int rec_mkdir(const char *dir) {
 			*p = '/';
 		}
 	return mkdir(tmp, S_IRWXU);
-}
-
-/*****************************************************************************
-* Get File Info
-*****************************************************************************/
-struct FileInfo {
-	char* dir;
-	char* file;
-};
-void get_output_path(const char* path, struct FileInfo* out)
-{
-	out->dir = dirname(strdup(path));
-	out->file = strtok(basename(strdup(path)), ".");
 }
 
 /*****************************************************************************
@@ -118,30 +104,29 @@ void set_build(struct BuildContext* ctx, char* lockfile)
 /*****************************************************************************
 * Compile Files
 *****************************************************************************/
-bool compile_file(const char* path, struct BuildContext* ctx)
+int compile_file(const char* path, struct BuildContext* ctx)
 {
 	char cmd[256];
 	char output_dir[256];
 	char output_file[256];
-	struct FileInfo fileinfo = {};
-	get_output_path(path, &fileinfo);
+	char* out_dir = dirname(strdup(path));
+	char* out_file = strtok(basename(strdup(path)), ".");
 
 	bool dep_has_changed = false;
 
 	// Check if file deps have been modified
-	sprintf(output_file, "%s/%s/%s.d", build_dir, fileinfo.dir, fileinfo.file);
+	// I hate this, but I'm too lazy to implement a better approch
+	sprintf(output_file, "%s/%s/%s.d", build_dir, out_dir, out_file);
 	FILE* depfile;
 	if ((depfile = fopen(output_file, "r"))) {
 		size_t len = 0;
 		char* line = NULL;
 		while (getline(&line, &len, depfile) != -1) {
 			char* linecpy = strdup(line);
-
 			char* tok = strtok(linecpy, " ");
 			while (tok != NULL) {
 				int strlen = strnlen(tok, 256);
 				if (tok[strlen - 1] == '\n') tok[(strlen--) - 1] = 0;
-
 				if ((tok[strlen] == '\0' && tok[strlen - 1] == 'h')) {
 					if (strstr(tok, "src")) {
 						struct stat filestat;
@@ -166,13 +151,12 @@ bool compile_file(const char* path, struct BuildContext* ctx)
 		assert(stat(path, &filestat) >= 0 && "Failed to stat file");
 		if (filestat.st_mtim.tv_sec < ctx->last_build
 				&& !dep_has_changed) {
-			return false;
+			return 1;
 		}
 	}
 
-
-	// Check if output directory exists
-	sprintf(output_dir, "%s/%s", build_dir, fileinfo.dir);
+	// Check if output directory exists, if not, create it
+	sprintf(output_dir, "%s/%s", build_dir, out_dir);
 	struct stat st = {0};
 	if (stat(output_dir, &st) == -1) {
 		if (rec_mkdir(output_dir) == -1) {
@@ -182,7 +166,7 @@ bool compile_file(const char* path, struct BuildContext* ctx)
 
 	// Create start of gcc command
 	sprintf(cmd, "gcc -c %s -o %s/%s/%s.o ",
-				 path, build_dir, fileinfo.dir, fileinfo.file);
+				 path, build_dir, out_dir, out_file);
 
 	// Add all the flags to the gcc command
 	for (int i = 0; i < (sizeof(c_cflags) / sizeof(c_cflags[0])); i++) {
@@ -190,9 +174,7 @@ bool compile_file(const char* path, struct BuildContext* ctx)
 	}
 
 	printf("[\033[34mBUILD\033[0m] %s\n", path);
-	exec(cmd);
-
-	return true;
+	return exec(cmd) == 0 ? 0 : 2;
 }
 bool compile_exe()
 {
@@ -207,15 +189,13 @@ bool compile_exe()
 	// Add all the obj files to the command
 	for (int i = 0; i < (sizeof(c_src) / sizeof(c_src[0])); i++) {
 		char* path = c_src[i];
-		struct FileInfo fileinfo = {};
-		get_output_path(path, &fileinfo);
-		sprintf(cmd + strlen(cmd), "%s/%s/%s.o ", build_dir, fileinfo.dir, fileinfo.file);
+		char* out_dir = dirname(strdup(path));
+		char* out_file = strtok(basename(strdup(path)), ".");
+		sprintf(cmd + strlen(cmd), "%s/%s/%s.o ", build_dir, out_dir, out_file);
 	}
 
 	printf("[\033[34mBUILD\033[0m] %s/%s\n", build_dir, c_exe);
-	exec(cmd);
-
-	return true;
+	return (exec(cmd) == 0);
 }
 
 /*****************************************************************************
@@ -225,37 +205,79 @@ int main(int argc, char *argv[])
 {
 	char build_file_lock[256];
 	sprintf(build_file_lock, "%s/build.lock", build_dir);
+
+	// Check if build directory exists, if not, create it
+	struct stat st = {0};
+	if (stat(build_dir, &st) == -1) {
+		if (rec_mkdir(build_dir) == -1) {
+			printf("Failed %s\n", strerror(errno));
+		}
+	}
+
 	struct BuildContext build_ctx = {0};
 	get_build(&build_ctx, build_file_lock);
 
+	// Don't run if another build is already running
 	if (build_ctx.lock) {
-		printf("Build in progress\n");
+		printf("[\033[31mBUILD\033[0m] Build in progress\n");
 		return 1;
+	} else {
+		build_ctx.lock = true;
+		set_build(&build_ctx, build_file_lock);
 	}
 
+	// Rebuild the build.c file if it has changed
 	struct stat build_filestat;
 	assert(stat(build_c, &build_filestat) >= 0 && "Failed to stat build.c");
 	if (build_ctx.last_modif < build_filestat.st_mtim.tv_sec) {
 		char cmd[256];
 		sprintf(cmd, "gcc %s -o %s", build_c, build_exe);
-		exec(cmd);
+		printf("[\033[35mBUILD\033[0m] %s\n", cmd);
+		int ret = exec(cmd);
+		if (ret != 0) {
+			return ret;
+		}
 	
 		build_ctx.last_modif = time(NULL);
-		printf("[\033[34mBUILD\033[0m] %s\n", build_c);
-	}
+		build_ctx.last_build = time(NULL);
+		build_ctx.lock = false;
+		set_build(&build_ctx, build_file_lock);
 
-	bool has_built = false;
+		sprintf(cmd, "%s", build_exe);
+		for (int i = 1; i < argc; i++)
+			sprintf(cmd, " %s", argv[i]);
+		ret = exec(build_exe);
+		return ret;
+	}
+	
+	// Compile all the .c files
+	bool change = false;
 	for (int i = 0; i < (sizeof(c_src) / sizeof(c_src[0])); i++) {
-		if (compile_file(c_src[i], &build_ctx)) {
-			has_built = true;
+		int ret = compile_file(c_src[i], &build_ctx);
+		if (ret == 0) {
+			change = true;
+		} else if (ret == 2) {
+			printf("[\033[31mBUILD\033[0m] Failed to build file\n");
+			build_ctx.lock = false;
+			set_build(&build_ctx, build_file_lock);
+			return 2;
 		}
 	}
-	if (has_built) {
-		build_ctx.last_build = time(NULL);
+	if (change) {
+		if (!compile_exe()) {
+			printf("[\033[31mBUILD\033[0m] Failed to build exe\n");
+		}
+	} else {
+		printf("Nothing to recompile\n");
 	}
-	compile_exe();
+	build_ctx.last_build = time(NULL);
+	build_ctx.lock = false;
 	set_build(&build_ctx, build_file_lock);
 
+	// Run the executable if -- is the first arg
+	// Will also use the rest of the args as the
+	// input args of the executable if any are
+	// supplyed
 	if (argc > 1) {
 		if (strstr(argv[1], "--")) {
 			char cmd[256];
@@ -263,9 +285,8 @@ int main(int argc, char *argv[])
 			for (int i = 2; i < argc; i++) {
 				sprintf(cmd, "%s %s", cmd, argv[i]);
 			}
-			exec(cmd);
+			return exec(cmd);
 		}
 	}
-
 	return 0;
 }

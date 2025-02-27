@@ -57,7 +57,6 @@ LinearSlice read_file(LinearAllocator* alloc, char path[64], size_t* size)
     return (LinearSlice){NULL, 0, 0};
   }
 
-
   struct pollfd fdp;
   fdp.fd = fd;
   fdp.events = POLLIN;
